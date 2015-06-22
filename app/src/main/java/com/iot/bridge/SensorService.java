@@ -1,14 +1,9 @@
 package com.iot.bridge;
 
-import android.app.Activity;
-import android.app.NotificationManager;
 import android.app.Service;
-import android.content.Context;
 import android.content.Intent;
 import android.os.Binder;
-import android.os.Handler;
 import android.os.IBinder;
-import android.support.v4.app.NotificationCompat;
 import android.util.Log;
 import android.widget.Toast;
 
@@ -24,6 +19,8 @@ public class SensorService extends Service {
 
 BluetoothSerial bluetoothSerial;
     MqttBroker mqttBroker;
+    boolean stopWorker=false;
+    Thread workerThread;
 
     public SensorService() {
         this.bluetoothSerial= new BluetoothSerial();
@@ -39,8 +36,9 @@ BluetoothSerial bluetoothSerial;
    @Override
     public void onCreate() {
         Toast.makeText(this, "The Sensor Service was Created", Toast.LENGTH_LONG).show();
-     // bluetoothSerial.findBT("JARVIS");
+        bluetoothSerial.findBT("HC-05");
         mqttBroker.doConnect("tcp://mqtt.dioty.co:1883");
+
 
     }
 
@@ -86,22 +84,42 @@ BluetoothSerial bluetoothSerial;
         byte[] b= test.getBytes();
         mqttBroker.publishMqtt(b);
         Log.e("",test);
-       /* try {
+        try {
             bluetoothSerial.openBT();
-            while (true) {
-                Toast.makeText(this, "DATA:" + bluetoothSerial.beginListenForData(), Toast.LENGTH_LONG).show();
-            }
+            //bluetoothSerial.sendData("test");
+            workerThread = new Thread(new Runnable()
+            {
+                public void run()
+                {
+                    while(!Thread.currentThread().isInterrupted() && !stopWorker) {
+                        try {
+                            String data=bluetoothSerial.beginListenForData();
+                            if(data != null)
+                            {
+                                byte[] b= data.getBytes();
+                                mqttBroker.publishMqtt(b);
+                            }
+                        }
+                        catch (IOException e) {
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            });
+            workerThread.start();
         }
         catch (IOException e) {
             e.printStackTrace();
-        }*/
+        }
         return START_NOT_STICKY;
     }
 
     @Override
     public void onDestroy() {
         try {
+            stopWorker=true;
             bluetoothSerial.closeBT();
+            //mqttBroker.disConnect();
         } catch (IOException e) {
             e.printStackTrace();
         }
